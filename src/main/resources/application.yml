@@ -1,0 +1,118 @@
+server:
+  port: ${SERVER_PORT:8080}
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,application/json
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: almoxarifado-control-tower
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:almoxarifado_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: warehouse-tower-pool
+      maximum-pool-size: 12
+      minimum-idle: 2
+      connection-timeout: 10000
+      # TelemetrySimulatorTask runs every 5s; a small pool keeps the UI responsive
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema; Hibernate only validates the mapping
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 30
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    schemas: public
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      indent-output: false
+    default-property-inclusion: non_null
+
+  web:
+    resources:
+      static-locations: classpath:/static/
+      cache:
+        cachecontrol:
+          max-age: 0
+          must-revalidate: true
+
+  mvc:
+    problemdetails:
+      enabled: true
+
+# =====================================================================
+# Control Tower - business rules / telemetry simulation
+# =====================================================================
+warehouse:
+  simulation:
+    # Base delay between TelemetrySimulatorTask cycles (ms).
+    # Also the starting value; it can be changed at runtime via
+    # POST /api/v1/simulation/parameters
+    interval-ms: ${SIMULATION_INTERVAL_MS:5000}
+    active: ${SIMULATION_ACTIVE:true}
+    # Event multiplier per cycle (0.1 = quiet environment, 3 = peak)
+    intensity: ${SIMULATION_INTENSITY:1.0}
+    # Chance of a cycle opening a new work order
+    work-order-probability: 0.55
+    # Chance of a cycle replenishing an item below its minimum
+    replenishment-probability: 0.22
+    # Consumption analysis window (days) used by the ABC curve
+    analysis-window-days: 30
+
+  stock:
+    # Safety factor applied on top of lead-time demand.
+    # SafetyStock = averageDailyConsumption * replenishmentLeadTimeDays * factor
+    safety-factor: 0.50
+    # ABC curve thresholds (cumulative share of inventory value)
+    abc-curve:
+      class-a-limit: 0.80
+      class-b-limit: 0.95
+    # An item is flagged CRITICAL while stock < reorder point
+    # warning-multiplier: reorder-point multiplier that raises the WARNING level
+    warning-multiplier: 1.25
+
+  # Supply-chain indicators required by the Team 5 brief
+  supply-chain:
+    # Window used for the inventory turnover calculation (giro de estoque)
+    turnover-window-days: ${TURNOVER_WINDOW_DAYS:30}
+    # Service target for closing a work order, in hours (tempo medio de atendimento)
+    sla-target-hours: ${SLA_TARGET_HOURS:48}
+
+logging:
+  level:
+    root: INFO
+    com.fabrica.controltower: INFO
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never

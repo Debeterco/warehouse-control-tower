@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Torre de Controle de Almoxarifado — Curva ABC, Ponto de Reposição e alertas de ruptura em tempo real.">
+  <title>Almoxarifado Control Tower | Team 5</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================================================
+       Cabeçalho
+       ============================================================ -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand__mark" aria-hidden="true">🏭</div>
+      <div>
+        <h1 class="brand__title">Almoxarifado Control Tower</h1>
+        <p class="brand__subtitle">Team 5 &middot; Supply Chain Logistics</p>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="status-chip" id="connection-chip">
+        <span class="status-chip__dot"></span>
+        <span id="connection-label">Conectando…</span>
+      </div>
+      <div class="status-chip">
+        <span>REFRESH</span>
+        <b id="refresh-label">5s</b>
+      </div>
+      <div class="status-chip">
+        <span>HORA</span>
+        <b id="clock">--:--:--</b>
+      </div>
+
+      <!-- Controles da simulação de telemetria -->
+      <div class="sim-controls">
+        <span class="sim-controls__label">Telemetria</span>
+        <button class="btn btn--primary" id="btn-toggle-sim" type="button">Pausar</button>
+        <div class="sim-controls__group">
+          <input type="range" id="intensity-slider" min="0.1" max="5" step="0.1" value="1"
+                 aria-label="Intensidade da simulação">
+          <span class="sim-controls__value" id="intensity-value">1.0x</span>
+        </div>
+        <div class="sim-controls__group">
+          <input type="range" id="interval-slider" min="500" max="15000" step="500" value="5000"
+                 aria-label="Intervalo entre ciclos em milissegundos">
+          <span class="sim-controls__value" id="interval-value">5000ms</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       KPIs
+       ============================================================ -->
+  <section class="kpi-grid" aria-label="Indicadores do almoxarifado">
+    <article class="kpi-card kpi-card--info">
+      <p class="kpi-card__label">Valor em Estoque</p>
+      <p class="kpi-card__value" id="kpi-valor">—</p>
+      <p class="kpi-card__meta" id="kpi-valor-meta">&nbsp;</p>
+    </article>
+
+    <article class="kpi-card kpi-card--ok">
+      <p class="kpi-card__label">Itens no Catálogo</p>
+      <p class="kpi-card__value" id="kpi-insumos">—</p>
+      <p class="kpi-card__meta" id="kpi-insumos-meta">&nbsp;</p>
+    </article>
+
+    <article class="kpi-card kpi-card--danger">
+      <p class="kpi-card__label">Ruptura</p>
+      <p class="kpi-card__value" id="kpi-ruptura">—</p>
+      <p class="kpi-card__meta">estoque zerado</p>
+    </article>
+
+    <article class="kpi-card kpi-card--warn">
+      <p class="kpi-card__label">Críticos</p>
+      <p class="kpi-card__value" id="kpi-critico">—</p>
+      <p class="kpi-card__meta">abaixo do ponto de reposição</p>
+    </article>
+
+    <article class="kpi-card kpi-card--info">
+      <p class="kpi-card__label">Em Alerta</p>
+      <p class="kpi-card__value" id="kpi-atencao">—</p>
+      <p class="kpi-card__meta">a caminho da ruptura</p>
+    </article>
+
+    <article class="kpi-card">
+      <p class="kpi-card__label">Valor Classe A</p>
+      <p class="kpi-card__value" id="kpi-classe-a">—</p>
+      <p class="kpi-card__meta" id="kpi-classe-a-meta">&nbsp;</p>
+    </article>
+
+    <article class="kpi-card kpi-card--info">
+      <p class="kpi-card__label">Cobertura Média</p>
+      <p class="kpi-card__value" id="kpi-cobertura">—</p>
+      <p class="kpi-card__meta" id="kpi-consumo-meta">&nbsp;</p>
+    </article>
+
+    <article class="kpi-card kpi-card--ok">
+      <p class="kpi-card__label">Ordens de Serviço</p>
+      <p class="kpi-card__value" id="kpi-ordens">—</p>
+      <p class="kpi-card__meta" id="kpi-ordens-meta">&nbsp;</p>
+    </article>
+
+    <!-- Giro de estoque -->
+    <article class="kpi-card kpi-card--info" title="Giro de estoque nos últimos 30 dias">
+      <p class="kpi-card__label">Giro de Estoque</p>
+      <p class="kpi-card__value" id="kpi-giro">—</p>
+      <p class="kpi-card__meta" id="kpi-giro-meta">&nbsp;</p>
+    </article>
+
+    <!-- Tempo médio de atendimento -->
+    <article class="kpi-card kpi-card--ok" title="Tempo médio de atendimento das ordens de manutenção">
+      <p class="kpi-card__label">Tempo Médio Atendimento</p>
+      <p class="kpi-card__value" id="kpi-atendimento">—</p>
+      <p class="kpi-card__meta" id="kpi-atendimento-meta">&nbsp;</p>
+    </article>
+  </section>
+
+  <!-- ============================================================
+       Filtros interativos
+       ============================================================ -->
+  <section class="filter-bar" aria-label="Filtros de análise">
+    <div class="filter-bar__group">
+      <label class="filter-bar__label" for="filter-class">Classe ABC</label>
+      <div class="segmented" role="group" aria-label="Filtrar por classe ABC">
+        <button class="segmented__btn is-active" data-abc="ALL" type="button">Todas</button>
+        <button class="segmented__btn" data-abc="A" type="button">A</button>
+        <button class="segmented__btn" data-abc="B" type="button">B</button>
+        <button class="segmented__btn" data-abc="C" type="button">C</button>
+      </div>
+    </div>
+
+    <div class="filter-bar__group">
+      <label class="filter-bar__label" for="filter-severity">Severidade</label>
+      <select id="filter-severity" class="select">
+        <option value="">Todas</option>
+        <option value="STOCKOUT">Ruptura</option>
+        <option value="CRITICAL">Crítico</option>
+        <option value="WARNING">Atenção</option>
+      </select>
+    </div>
+
+    <div class="filter-bar__group">
+      <label class="filter-bar__label" for="filter-search">Buscar insumo</label>
+      <input type="search" id="filter-search" class="input" placeholder="código ou nome…" autocomplete="off">
+    </div>
+
+    <div class="filter-bar__group">
+      <label class="filter-bar__label" for="filter-top">Itens no Pareto</label>
+      <select id="filter-top" class="select">
+        <option value="0">Todos</option>
+        <option value="5">Top 5</option>
+        <option value="10">Top 10</option>
+        <option value="15">Top 15</option>
+        <option value="20">Top 20</option>
+      </select>
+    </div>
+
+    <div class="filter-bar__group filter-bar__group--right">
+      <span class="filter-bar__result" id="filter-result">—</span>
+      <button class="btn" id="btn-clear-filters" type="button">Limpar</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Gráficos
+       ============================================================ -->
+  <section class="dashboard-grid">
+    <article class="panel">
+      <header class="panel__header">
+        <h2 class="panel__title">Curva ABC / Pareto</h2>
+        <span class="panel__badge" id="pareto-badge">—</span>
+      </header>
+      <div class="panel__body">
+        <div id="pareto-chart" class="chart" role="img"
+             aria-label="Gráfico de Pareto da valorização do estoque"></div>
+        <div class="legend" id="abc-legend">
+          <span class="legend__item">
+            <span class="legend__swatch" style="background: var(--abc-a)"></span>
+            Classe A <b class="legend__value" id="legend-a">—</b>
+          </span>
+          <span class="legend__item">
+            <span class="legend__swatch" style="background: var(--abc-b)"></span>
+            Classe B <b class="legend__value" id="legend-b">—</b>
+          </span>
+          <span class="legend__item">
+            <span class="legend__swatch" style="background: var(--abc-c)"></span>
+            Classe C <b class="legend__value" id="legend-c">—</b>
+          </span>
+        </div>
+      </div>
+    </article>
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <article class="panel">
+        <header class="panel__header">
+          <h2 class="panel__title">Saúde do Estoque</h2>
+        </header>
+        <div class="panel__body">
+          <div id="gauge-health" class="chart chart--gauge" role="img"
+               aria-label="Índice de saúde do estoque"></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <header class="panel__header">
+          <h2 class="panel__title">Composição ABC</h2>
+        </header>
+        <div class="panel__body">
+          <div id="chart-abc-donut" class="chart chart--compact" role="img"
+               aria-label="Distribuição de itens por classe ABC"></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <header class="panel__header">
+          <h2 class="panel__title">Fornecedores</h2>
+          <span class="panel__badge" id="suppliers-badge">—</span>
+        </header>
+        <div class="panel__body">
+          <div class="table-wrapper table-wrapper--short">
+            <table>
+              <thead>
+              <tr>
+                <th>Fornecedor</th>
+                <th class="num">Itens</th>
+                <th class="num">Valor</th>
+                <th class="num">% Part.</th>
+                <th class="num">Lead Time</th>
+                <th class="num">Em Risco</th>
+                <th>Risco</th>
+              </tr>
+              </thead>
+              <tbody id="suppliers-body">
+              <tr><td colspan="7"><div class="state"><span class="state__icon">⏳</span><span>Carregando…</span></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Giro de estoque e tempo de atendimento
+       ============================================================ -->
+  <section class="dashboard-grid">
+    <article class="panel">
+      <header class="panel__header">
+        <h2 class="panel__title">Giro de Estoque por Classe ABC</h2>
+        <span class="panel__badge" id="turnover-badge">—</span>
+      </header>
+      <div class="panel__body">
+        <div id="chart-turnover" class="chart chart--compact" role="img"
+             aria-label="Giro de estoque por classe ABC"></div>
+        <div class="turnover-summary" id="turnover-summary">
+          <div class="turnover-summary__item">
+            <span class="turnover-summary__label">COGS (30d)</span>
+            <span class="turnover-summary__value" id="turnover-cogs">—</span>
+          </div>
+          <div class="turnover-summary__item">
+            <span class="turnover-summary__label">Estoque Médio</span>
+            <span class="turnover-summary__value" id="turnover-avg">—</span>
+          </div>
+          <div class="turnover-summary__item">
+            <span class="turnover-summary__label">Anualizado</span>
+            <span class="turnover-summary__value" id="turnover-annual">—</span>
+          </div>
+          <div class="turnover-summary__item">
+            <span class="turnover-summary__label">Dias de Estoque</span>
+            <span class="turnover-summary__value" id="turnover-dio">—</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel">
+      <header class="panel__header">
+        <h2 class="panel__title">Tempo de Atendimento por Setor</h2>
+        <span class="panel__badge" id="fulfilment-badge">—</span>
+      </header>
+      <div class="panel__body">
+        <div id="chart-fulfilment" class="chart chart--compact" role="img"
+             aria-label="Tempo médio de atendimento por setor"></div>
+        <div class="fulfilment-summary" id="fulfilment-summary">
+          <div class="fulfilment-summary__row">
+            <span>Mediana</span><b id="fulfilment-median">—</b>
+          </div>
+          <div class="fulfilment-summary__row">
+            <span>Mais rápida</span><b id="fulfilment-min">—</b>
+          </div>
+          <div class="fulfilment-summary__row">
+            <span>Mais lenta</span><b id="fulfilment-max">—</b>
+          </div>
+          <div class="fulfilment-summary__row">
+            <span>Dentro do SLA (<span id="fulfilment-sla-target">48</span>h)</span>
+            <b id="fulfilment-sla">—</b>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============================================================
+       Alertas e catálogo
+       ============================================================ -->
+  <section class="dashboard-grid">
+    <article class="panel">
+      <header class="panel__header">
+        <h2 class="panel__title">Alertas de Ruptura</h2>
+        <span class="panel__badge" id="alertas-badge">—</span>
+      </header>
+      <div class="panel__body">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+            <tr>
+              <th>Código</th>
+              <th>Insumo</th>
+              <th class="num">Saldo</th>
+              <th class="num">Ponto Rep.</th>
+              <th class="num">Cobertura</th>
+              <th>Cobertura %</th>
+              <th class="num">A Separar</th>
+              <th class="num">Valor em Risco</th>
+              <th>Severidade</th>
+            </tr>
+            </thead>
+            <tbody id="alertas-body">
+            <tr>
+              <td colspan="9">
+                <div class="state">
+                  <span class="state__icon">⏳</span>
+                  <span>Carregando alertas…</span>
+                </div>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel">
+      <header class="panel__header">
+        <h2 class="panel__title">Ponto de Reposição</h2>
+        <span class="panel__badge" id="rp-badge">—</span>
+      </header>
+      <div class="panel__body">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+            <tr>
+              <th>Código</th>
+              <th>Classe</th>
+              <th class="num">Saldo</th>
+              <th class="num">Mín</th>
+              <th class="num">Lead Time</th>
+              <th class="num">Ponto Rep.</th>
+              <th>Status</th>
+            </tr>
+            </thead>
+            <tbody id="rp-body">
+            <tr>
+              <td colspan="7">
+                <div class="state">
+                  <span class="state__icon">⏳</span>
+                  <span>Carregando catálogo…</span>
+                </div>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============================================================
+       Rodapé
+       ============================================================ -->
+  <footer class="app-footer">
+    <div class="app-footer__stats">
+      <span class="app-footer__stat">CICLOS <b id="stat-ciclos">0</b></span>
+      <span class="app-footer__stat">OS GERADAS <b id="stat-ordens">0</b></span>
+      <span class="app-footer__stat">MOVIMENTAÇÕES <b id="stat-movs">0</b></span>
+      <span class="app-footer__stat">REPOSIÇÕES <b id="stat-reposicoes">0</b></span>
+      <span class="app-footer__stat">24H <b id="stat-movs24h">0</b></span>
+    </div>
+    <span id="footer-updated">Aguardando telemetria…</span>
+  </footer>
+
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ECharts servido localmente (funciona sem internet na rede da planta) -->
+<script src="/vendor/echarts.min.js"></script>
+<script src="/js/services/api.js"></script>
+<script src="/js/charts/paretoChart.js"></script>
+<script src="/js/charts/gaugeChart.js"></script>
+<script src="/js/charts/supplyChainChart.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
