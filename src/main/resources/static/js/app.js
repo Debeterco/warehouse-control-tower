@@ -484,8 +484,25 @@
     $('fulfilment-median').textContent = `${formatNumber(data.medianFulfilmentHours, 1)}h`;
     $('fulfilment-min').textContent = `${formatNumber(data.minFulfilmentHours, 1)}h`;
     $('fulfilment-max').textContent = `${formatNumber(data.maxFulfilmentHours, 1)}h`;
-    $('fulfilment-sla').textContent = `${formatNumber(data.slaCompliancePercent, 1)}%`;
+
+    // State the denominator: the percentage counts individual orders, not
+    // departments, so "89,5%" alone reads as a contradiction next to bars
+    // that are all inside the target.
+    const total = Number(data.completedCount || 0);
+    const pct = Number(data.slaCompliancePercent || 0);
+    const within = Math.round((total * pct) / 100);
+    $('fulfilment-sla').textContent = `${within} de ${formatNumber(total)} · ${formatNumber(pct, 1)}%`;
     $('fulfilment-sla-target').textContent = formatNumber(data.slaTargetHours, 0);
+
+    // Flag when the average hides a compliance problem.
+    const offenders = (data.byDepartment || [])
+      .filter((d) => Number(d.averageFulfilmentHours) <= Number(data.slaTargetHours)
+                     && Number(d.slaCompliancePercent) < 90);
+    if (offenders.length > 0) {
+      $('fulfilment-summary').title =
+        'Média dentro da meta, mas com ordens acima do SLA: '
+        + offenders.map((d) => `${d.department} (${d.slaCompliancePercent}%)`).join(', ');
+    }
   }
 
   function renderSuppliers(data) {

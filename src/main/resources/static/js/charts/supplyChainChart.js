@@ -154,9 +154,15 @@ const SupplyChainChart = (() => {
    * Horizontal bars: department names are long, so the category axis is
    * vertical and the bars read left-to-right.
    *
+   * <p>Bar length is the <b>average</b> fulfilment time, but the bar colour
+   * follows the <b>share of individual orders</b> inside the SLA. Colouring by
+   * average alone is misleading: a department can average 34h (green) while a
+   * fifth of its orders breach the 48h target, which is exactly the department
+   * a supply manager needs to see. The average hides that long tail.</p>
+   *
    * @param {HTMLElement} element #chart-fulfilment
    * @param {WorkOrderFulfilmentDTO} data payload from /work-orders/fulfilment
-   * @param {number} slaHours service target, used to tint compliant departments
+   * @param {number} slaHours service target
    */
   function renderFulfilment(element, data, slaHours) {
     const chart = mountFulfilment(element);
@@ -172,10 +178,25 @@ const SupplyChainChart = (() => {
     const sorted = [...rows].sort((a, b) => Number(a.averageFulfilmentHours) - Number(b.averageFulfilmentHours));
     const target = Number(slaHours || 48);
 
+    // Colour by SLA compliance, with a fallback for missing values.
+    const complianceColor = (pct) => {
+      if (pct === null || pct === undefined || Number.isNaN(pct)) return '#6b7d8f';
+      if (pct >= 90) return '#2ecc71';
+      if (pct >= 80) return '#f5a524';
+      return '#ef4a4a';
+    };
+
+    const breaching = (row) => {
+      const total = Number(row.completedCount || 0);
+      const pct = Number(row.slaCompliancePercent);
+      if (!total || Number.isNaN(pct)) return null;
+      return Math.max(0, Math.round(total * (1 - pct / 100)));
+    };
+
     chart.setOption({
       backgroundColor: 'transparent',
       animationDuration: 420,
-      grid: { left: 8, right: 54, top: 12, bottom: 6, containLabel: true },
+      grid: { left: 8, right: 96, top: 30, bottom: 6, containLabel: true },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -187,15 +208,33 @@ const SupplyChainChart = (() => {
           const bar = params.find((p) => p.seriesType === 'bar');
           if (!bar) return '';
           const row = sorted[bar.dataIndex];
+          const late = breaching(row);
           return `
             <div style="font-family:Consolas,monospace;font-size:12px">
               <div style="color:#22d3ee;font-weight:700;margin-bottom:5px">${row.department}</div>
               <div>Tempo médio <b>${row.averageFulfilmentHours}h</b></div>
               <div>Ordens concluídas <b>${row.completedCount}</b></div>
+              <div>Dentro do SLA (${target}h) <b>${row.slaCompliancePercent}%</b></div>
+              ${late !== null
+                ? `<div style="color:#ef4a4a">Acima do SLA <b>${late}</b> de ${row.completedCount}</div>`
+                : ''}
               <div>Em aberto <b>${row.backlogCount}</b></div>
-              <div>Dentro do SLA <b>${row.slaCompliancePercent}%</b></div>
             </div>`;
         },
+      },
+      legend: {
+        data: ['≥90% no SLA', '80–90%', '<80%'],
+        top: 0,
+        right: 0,
+        itemWidth: 11,
+        itemHeight: 9,
+        itemGap: 12,
+        textStyle: { color: TEXT, fontSize: 10 },
+        data: [
+          { name: '≥90% no SLA', itemStyle: { color: '#2ecc71' } },
+          { name: '80–90%', itemStyle: { color: '#f5a524' } },
+          { name: '<80%', itemStyle: { color: '#ef4a4a' } },
+        ],
       },
       xAxis: {
         type: 'value',
@@ -224,8 +263,7 @@ const SupplyChainChart = (() => {
         data: sorted.map((r) => ({
           value: Number(r.averageFulfilmentHours || 0),
           itemStyle: {
-            // Green inside the target, amber approaching it, red beyond.
-            color: Number(r.averageFulfilmentHours) <= target ? '#2ecc71' : '#ef4a4a',
+            color: complianceColor(Number(r.slaCompliancePercent)),
             borderRadius: [0, 3, 3, 0],
           },
         })),
@@ -233,7 +271,16 @@ const SupplyChainChart = (() => {
         label: {
           show: true,
           position: 'right',
-          formatter: (p) => `${p.value}h`,
+          // Shows average and compliance together, so the two numbers can
+          // never look contradictory: "34h · 81%" reads as average-fine,
+          // compliance-poor at a glance.
+          formatter: (p) => {
+            const row = sorted[p.dataIndex];
+            const pct = Number(row.slaCompliancePercent);
+            return Number.isNaN(pct)
+              ? `${p.value}h`
+              : `${p.value}h · ${pct}%`;
+          },
           color: TEXT,
           fontSize: 10.5,
           fontFamily: 'Consolas, monospace',
@@ -242,7 +289,7 @@ const SupplyChainChart = (() => {
           silent: true,
           symbol: 'none',
           label: {
-            formatter: `SLA ${target}h`,
+            formatter: `média meta ${target}h`,
             color: '#f5a524',
             fontSize: 9.5,
             fontFamily: 'Consolas, monospace',
