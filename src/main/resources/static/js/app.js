@@ -231,8 +231,19 @@
         cumulativePercentage: subsetTotal > 0
           ? Number(((running / subsetTotal) * 100).toFixed(2))
           : 0,
+        // Flag items with no stock on hand: they contribute no value, so the
+        // bar would render with zero height and look like a rendering glitch.
+        noStock: Number(i.inventoryValue || 0) === 0,
       };
     });
+
+    const zeroValueCount = withCumulative.filter((i) => i.noStock).length;
+    if (zeroValueCount > 0) {
+      $('pareto-badge').title =
+        `${zeroValueCount} item(ns) sem saldo em mãos: contribute R$ 0 para a valorização.`;
+    } else {
+      $('pareto-badge').removeAttribute('title');
+    }
 
     ParetoChart.render($('pareto-chart'), {
       ...curve,
@@ -255,15 +266,19 @@
 
   function updateFilterResult() {
     const total = latestCurve?.items?.length ?? 0;
+    const visible = countVisible();
     const active = [];
     if (filters.abcClass !== 'ALL') active.push(`classe ${filters.abcClass}`);
     if (filters.severity) active.push(severityLabel(filters.severity).toLowerCase());
     if (filters.search) active.push(`"${filters.search}"`);
     if (filters.topN > 0) active.push(`top ${filters.topN}`);
 
+    // "Exibindo N de M" is explicit about which number is on screen.
+    // Previously this showed the hidden count, which read as the visible one
+    // and contradicted the Pareto badge.
     $('filter-result').textContent = active.length
-      ? `${total - countVisible()} de ${total} itens · ${active.join(' + ')}`
-      : `${total} itens · sem filtros`;
+      ? `Exibindo ${visible} de ${total} · ${active.join(' + ')}`
+      : `Exibindo ${total} de ${total} · sem filtros`;
   }
 
   function countVisible() {
@@ -696,8 +711,56 @@
   }
 
   // ===================================================================
-  // Bootstrap
+  // Responsive chart sizing
   // ===================================================================
+
+  /**
+   * Keeps every chart matched to its container.
+   *
+   * <p>A window resize listener is not enough here. Browser zoom narrows the
+   * viewport without necessarily changing window dimensions in a way the
+   * debounced handler can catch in time, and a chart that grew to fill its
+   * panel (see .panel--fill) also changes size without a window resize. A
+   * ResizeObserver reacts to the element's own box, which covers zoom, panel
+   * reflow and font loading alike.</p>
+   */
+  function observeChartResize() {
+    if (typeof ResizeObserver === 'undefined') return;
+
+    // ResizeObserver fires per frame while a chart is resizing, which is
+    // wasteful; coalesce to one call per frame.
+    const pending = new Set();
+    let frame = null;
+
+    const flush = () => {
+      frame = null;
+      const ids = Array.from(pending);
+      pending.clear();
+      for (const id of ids) {
+        const chart = echarts.getInstanceByDom($(id));
+        if (chart && !chart.isDisposed()) chart.resize();
+      }
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          pending.add(entry.target.id);
+        }
+      }
+      if (pending.size && frame === null) {
+        frame = requestAnimationFrame(flush);
+      }
+    });
+
+    ['pareto-chart', 'gauge-health', 'chart-abc-donut',
+      'chart-turnover', 'chart-fulfilment'].forEach((id) => {
+      const el = $(id);
+      if (el) observer.observe(el);
+    });
+
+    window.addEventListener('beforeunload', () => observer.disconnect());
+  }
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof echarts === 'undefined') {
       setConnection('status-chip--offline', 'ECharts não carregado');
@@ -706,6 +769,7 @@
 
     startClock();
     registerControls();
+    observeChartResize();
 
     let resizeTimer = null;
     window.addEventListener('resize', () => {

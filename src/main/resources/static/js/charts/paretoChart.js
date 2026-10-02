@@ -72,6 +72,7 @@ const ParetoChart = (() => {
           const bar = params.find((p) => p.seriesType === 'bar');
           if (!bar) return '';
           const item = items[bar.dataIndex];
+          const semEstoque = Number(item.inventoryValue || 0) === 0;
           return `
             <div style="font-family:Consolas,monospace;font-size:12px">
               <div style="color:#22d3ee;font-weight:700;margin-bottom:5px">${item.code}</div>
@@ -83,6 +84,9 @@ const ParetoChart = (() => {
               <div>Custo unitário <b style="color:#e6edf3">${formatCurrency(item.unitCost)}</b></div>
               <div>Acumulado <b style="color:#22d3ee">${item.cumulativePercentage}%</b></div>
               <div>Classe <b style="color:${PALETTE[item.abcClass]}">${item.abcClass}</b></div>
+              ${semEstoque
+                ? '<div style="margin-top:6px;color:#ef4a4a">Sem saldo em mãos: sem valor imobilizado.</div>'
+                : ''}
             </div>`;
         },
       },
@@ -143,13 +147,32 @@ const ParetoChart = (() => {
         {
           name: 'Valorização',
           type: 'bar',
-          data: values.map((value, i) => ({
-            value,
-            itemStyle: {
-              color: PALETTE[items[i].abcClass] || PALETTE.C,
-              borderRadius: [3, 3, 0, 0],
-            },
-          })),
+          // An item with no stock on hand has no value tied up, so its bar
+          // would have zero height and read as a rendering glitch. Give those a
+          // thin hatched stub instead: the bar count then always matches the
+          // item count, and the reason stays visible.
+          data: values.map((value, i) => {
+            const abcClass = items[i].abcClass;
+            if (value > 0) {
+              return {
+                value,
+                itemStyle: {
+                  color: PALETTE[abcClass] || PALETTE.C,
+                  borderRadius: [3, 3, 0, 0],
+                },
+              };
+            }
+            return {
+              value: 0,
+              itemStyle: {
+                color: PALETTE[abcClass] || PALETTE.C,
+                opacity: 0.35,
+                borderColor: PALETTE[abcClass] || PALETTE.C,
+                borderWidth: 1,
+                borderType: [3, 2],
+              },
+            };
+          }),
           barMaxWidth: 34,
           emphasis: { itemStyle: { opacity: 0.85 } },
         },

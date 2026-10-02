@@ -498,13 +498,39 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.table-wrapper--short {
-  max-height: 232px;
-}
-
 /* ---------------------------------------------------------------------
    Painéis
    --------------------------------------------------------------------- */
+/* Column of stacked panels on the side of a two-column grid. */
+.dashboard-grid__side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/*
+  A grid row is as tall as its tallest item, so the shorter panel is stretched
+  to match. With a fixed-height canvas that leaves dead space inside it. This
+  modifier lets the chart absorb that space instead: the panel stays stretched
+  but its chart grows to fill, which also makes the curve easier to read.
+*/
+.panel--fill {
+  min-height: 0;
+}
+
+.panel--fill .panel__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel--fill .chart {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 300px;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -615,8 +641,17 @@ body {
 .table-wrapper {
   max-height: 360px;
   overflow-y: auto;
+  /* Without this, nowrap cells spill out of the panel once the browser zoom
+     narrows the viewport, dragging a horizontal scrollbar across the layout. */
+  overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Shorter scroller for secondary tables. Must come AFTER .table-wrapper:
+   both selectors have the same specificity, so the later rule wins. */
+.table-wrapper--short {
+  max-height: 232px;
 }
 
 .table-wrapper::-webkit-scrollbar { width: 8px; }
