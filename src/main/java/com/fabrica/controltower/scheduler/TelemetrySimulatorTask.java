@@ -167,6 +167,15 @@ public class TelemetrySimulatorTask implements DisposableBean {
 
     /** Runs one full telemetry cycle. Never throws. */
     public void executeCycle() {
+        // A cycle already handed to the scheduler cannot be interrupted
+        // mid-transaction, but it can be stopped before it does any work:
+        // pausing cancels the pending timer, and this guard catches the case
+        // where the pause lands in the window between firing and starting.
+        if (!active) {
+            log.debug("Ciclo descartado: simulacao pausada.");
+            return;
+        }
+
         long cycle = cyclesExecuted.incrementAndGet();
         try {
             int events = 0;
@@ -359,8 +368,13 @@ public class TelemetrySimulatorTask implements DisposableBean {
             log.info("Simulation interval set to {} ms", intervalMs);
         }
 
-        // Any meaningful change requires rescheduling (including on/off).
-        if (intervalChanged || (input.active() != null && input.active())) {
+        // Any explicit change to the on/off switch needs a reschedule, in BOTH
+        // directions. The previous condition only fired on `active == true`,
+        // so pausing left the pending timer armed: the scheduled cycle still
+        // ran, generated events, and only then noticed the pause in its
+        // finally block.
+        boolean activeToggled = input.active() != null;
+        if (intervalChanged || activeToggled) {
             reschedule();
         }
         return currentParameters();
