@@ -53,6 +53,26 @@ Acesse **http://localhost:8090**
 > (aplicativo SCADA/HMI de planta). **Não encerte o processo.** Use
 > `SERVER_PORT=8090` ou outra porta livre.
 
+### 4. Zerar o banco (antes de apresentar)
+
+O simulador de telemetria roda continuamente e drena o estoque, então o painel
+se afasta dos números do seed. Para começar de um estado limpo:
+
+```powershell
+$env:DB_PASSWORD = 'sua-senha'
+.\reset-db.ps1
+```
+
+O script para a aplicação, recria o banco (as 4 migrations rodam de novo),
+sobe o app e imprime o estado resultante. Opções:
+
+| Parâmetro | Efeito |
+|---|---|
+| `-Port 8099` | usa outra porta |
+| `-DbName outro_db` | reseta outro banco |
+| `-NoStart` | recria o banco sem iniciar a aplicação |
+| `-Yes` | pula a confirmação (útil para automação) |
+
 ---
 
 ## API REST

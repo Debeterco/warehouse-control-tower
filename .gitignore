@@ -41,3 +41,7 @@ app.err.log
 ### Local database dumps ###
 *.sql.gz
 *.dump
+
+### Warehouse Control Tower - reset script output ###
+reset-db.log
+reset-db.log.err
